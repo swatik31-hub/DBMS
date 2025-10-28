@@ -1,0 +1,270 @@
+mysql> create database t;
+Query OK, 1 row affected (0.02 sec)
+
+mysql> use t;
+Database changed
+
+mysql> CREATE TABLE Fine (
+    ->     Roll_no INT,
+    ->     Return_Date DATE,
+    ->     Amt DECIMAL(10,2)
+    -> );
+Query OK, 0 rows affected (0.08 sec)
+
+mysql> CREATE TABLE Borrower (
+    ->     Roll_no INT PRIMARY KEY,
+    ->     Name VARCHAR(100),
+    ->     Date_of_Issue DATE,
+    ->     Name_of_Book VARCHAR(100),
+    ->     Status CHAR(1)  -- 'I' = Issued, 'R' = Returned
+    -> );
+Query OK, 0 rows affected (0.08 sec)
+
+mysql> INSERT INTO Borrower VALUES (1, 'Ravi', '2025-06-15', 'DBMS', 'I');
+Query OK, 1 row affected (0.02 sec)
+
+mysql> INSERT INTO Borrower VALUES (2, 'Sneha', '2025-07-01', 'Java', 'I');
+Query OK, 1 row affected (0.01 sec)
+
+mysql> INSERT INTO Fine (Roll_no, Return_Date, Amt)
+    -> VALUES 
+    ->     (1, '2025-07-26', 700.00),
+    ->     (2, '2025-07-25', 75.00),
+    ->     (3, '2025-07-20', 0.00);  -- No fine for this student
+Query OK, 3 rows affected (0.01 sec)
+Records: 3  Duplicates: 0  Warnings: 0
+
+mysql> DELIMITER $$
+mysql> 
+mysql> CREATE PROCEDURE ReturnBookAndCalculateFine (
+    ->     IN p_roll_no INT,
+    ->     IN p_book_name VARCHAR(100)
+    -> )
+    -> BEGIN
+    ->     DECLARE v_issue_date DATE;
+    ->     DECLARE v_days INT;
+    ->     DECLARE v_fine DECIMAL(10,2) DEFAULT 0;
+    ->     DECLARE v_status CHAR(1);
+    ->     DECLARE exit handler FOR NOT FOUND 
+    ->         BEGIN
+    ->             SELECT 'No matching record found.' AS message;
+    ->         END;
+    -> 
+    ->     -- Get issue date and status
+    ->     SELECT Date_of_Issue, Status 
+    ->     INTO v_issue_date, v_status
+    ->     FROM Borrower
+    ->     WHERE Roll_no = p_roll_no AND Name_of_Book = p_book_name;
+    -> 
+    ->     IF v_status = 'R' THEN
+    ->         SELECT 'Book already returned.' AS message;
+    ->     ELSE
+    ->         -- Calculate days difference
+    ->         SET v_days = DATEDIFF(CURDATE(), v_issue_date);
+    -> 
+    ->         -- Calculate fine
+    ->         IF v_days > 30 THEN
+    ->             SET v_fine = (30 * 5) + ((v_days - 30) * 50);
+    ->         ELSEIF v_days > 15 THEN
+    ->             SET v_fine = v_days * 5;
+    ->         ELSE
+    ->             SET v_fine = 0;
+    ->         END IF;
+    -> 
+    ->         -- Update status to Returned
+    ->         UPDATE Borrower
+    ->         SET Status = 'R'
+    ->         WHERE Roll_no = p_roll_no AND Name_of_Book = p_book_name;
+    -> 
+    ->         -- Insert into Fine if applicable
+    ->         IF v_fine > 0 THEN
+    ->             INSERT INTO Fine (Roll_no, Return_Date, Amt)
+    ->             VALUES (p_roll_no, CURDATE(), v_fine);
+    ->         END IF;
+    -> 
+    ->         -- Output messages
+    ->         SELECT 'Book returned successfully.' AS message;
+    ->         SELECT v_fine AS Fine_Amount;
+    ->     END IF;
+    -> 
+    -> END $$
+Query OK, 0 rows affected (0.02 sec)
+
+mysql> 
+mysql> DELIMITER ;
+mysql> CALL ReturnBookAndCalculateFine(1, 'DBMS');
++-----------------------------+
+| message                     |
++-----------------------------+
+| Book returned successfully. |
++-----------------------------+
+1 row in set (0.02 sec)
+
++-------------+
+| Fine_Amount |
++-------------+
+|      700.00 |
++-------------+
+1 row in set (0.02 sec)
+
+Query OK, 0 rows affected (0.02 sec)
+
+mysql> SELECT * FROM Fine WHERE Roll_no = 1;
++---------+-------------+--------+
+| Roll_no | Return_Date | Amt    |
++---------+-------------+--------+
+|       1 | 2025-07-26  | 700.00 |
+|       1 | 2025-07-26  | 700.00 |
++---------+-------------+--------+
+2 rows in set (0.00 sec)
+
+mysql> 
+
+
+1️⃣ Tables and Data
+Borrower Table
+
+    Columns:
+
+        Roll_no: Student’s roll number (Primary key).
+
+        Name: Student’s name.
+
+        Date_of_Issue: The date when the book was issued.
+
+        Name_of_Book: Name of the book issued.
+
+        Status: 'I' means book is Issued, 'R' means Returned.
+
+You created two sample records:
+Roll_no	Name	Date_of_Issue	Name_of_Book	Status
+1	Ravi	2025-06-15	DBMS	I
+2	Sneha	2025-07-01	Java	I
+Fine Table
+
+    Columns:
+
+        Roll_no: Student roll number.
+
+        Return_Date: Date when book was returned.
+
+        Amt: Fine amount charged.
+
+You inserted 3 rows manually, including a zero fine entry.
+
+2️⃣ Stored Procedure: ReturnBookAndCalculateFine
+
+This procedure automates:
+
+    Accepts Roll_no and Book_Name as input.
+
+    Finds the issued book’s Date_of_Issue and current Status.
+
+    Checks if book is already returned (Status = 'R').
+
+    Calculates the number of days since issue using:
+
+    DATEDIFF(CURDATE(), v_issue_date)
+
+    Applies fine rules:
+
+        Days ≤ 15 → no fine (0)
+
+        Days between 16 and 30 → days * 5 Rs.
+
+        Days > 30 → 30*5 + (days-30)*50 Rs.
+
+    Updates the book’s Status to 'R' (returned).
+
+    Inserts a new row into the Fine table if a fine applies (v_fine > 0).
+
+    Returns success message and fine amount.
+
+    If no matching book record found, returns 'No matching record found.'
+
+
+3️⃣ How It Works on Your Sample Call
+
+CALL ReturnBookAndCalculateFine(1, 'DBMS');
+
+    For Roll_no = 1, book DBMS:
+
+        Issue Date: 2025-06-15
+
+        Current Date: assumed 2025-07-26 (when procedure ran)
+
+        Days = 41
+
+    Fine calculation:
+
+        First 30 days: 30 * 5 = 150 Rs.
+
+        Next 11 days: 11 * 50 = 550 Rs.
+
+        Total fine = 700 Rs.
+
+    Updates Status from 'I' to 'R'.
+
+    Inserts one row into Fine with Rs. 700.
+
+    Prints success message and fine amount.
+
+
+4️⃣ Why There Are Two Rows for Roll_no=1 in Fine
+
+SELECT * FROM Fine WHERE Roll_no = 1;
+
+Shows:
+Roll_no	Return_Date	Amt
+1	2025-07-26	700.00
+1	2025-07-26	700.00
+
+Reason:
+You called the procedure twice for the same book without resetting the data, so:
+
+    The first call inserted a fine row and updated status.
+
+    The second call inserted another fine row (because the procedure runs each time independently).
+
+    The status update doesn't block this since the procedure allows it.
+
+
+5️⃣ Exception Handling
+
+    The DECLARE EXIT HANDLER FOR NOT FOUND gracefully handles the case where no matching record exists in Borrower for the input parameters.
+
+    Instead of failing with an error, it returns 'No matching record found.' message.
+
+    This makes your procedure robust against bad input.
+    
+
+6️⃣ Summary of Concepts Learned
+
+    Table design for library fine management.
+
+    Conditional logic to calculate fines based on date differences.
+
+    Status updates to track book returns.
+
+    Exception handling in MySQL stored procedures.
+
+    Use of DATEDIFF to calculate days between dates.
+
+    Use of input parameters to create reusable stored procedures.
+
+    Inserting computed data (Fine) dynamically.
+
+    Outputting messages and data using SELECT.
+
+
+7️⃣ Suggestions for Improvement
+
+    Prevent duplicate fines: Add a check before inserting fine if a fine for the same book and date already exists.
+
+    Composite key on Borrower: Roll_no + Name_of_Book to uniquely identify issued books.
+
+    Return output parameters instead of multiple selects for easier client-side handling.
+
+    Add a return date column in Borrower to store actual returned date.
+
+    Implement transaction control (COMMIT/ROLLBACK) for better data integrity.
